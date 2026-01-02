@@ -8,6 +8,7 @@
 #include "GameSettings.h"
 #include "Platform/Process.h"
 
+#include <Toshi/TString16.h>
 #include <Toshi/T2String.h>
 
 //-----------------------------------------------------------------------------
@@ -116,7 +117,7 @@ void MainScreen::Button_PlayGame()
 			strStartParams.Append( L"-fun " );*/
 	}
 
-	TINFO( "Starting the game with '%s' parameters\n", strStartParams.Get() );
+	TINFO( "Starting the game with '%s' parameters\n", TString8( TString16( strStartParams.Get() ) ).GetString() );
 
 	Process gameProcess;
 	gameProcess.Create(
