@@ -1,8 +1,11 @@
 #include "pch.h"
 #include "Application.h"
+#include "UpdateManager.h"
 #include "ModManager.h"
+#include "GlobalState.h"
 #include "Screens/UIScreenControl.h"
 #include "Screens/MainScreen.h"
+#include "UIFonts.h"
 
 #include "Platform/Utils.h"
 #include "Platform/Process.h"
@@ -16,6 +19,8 @@
 #include "imgui_impl_opengl3.h"
 
 #include <ToshiTools/T2CommandLine.h>
+#include <Thread/TThread.h>
+#include <Toshi/TPString8.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
@@ -49,6 +54,8 @@ int main( int argc, char** argv )
 	engineParams.szCommandLine = GetCommandLineA();
 
 	TUtil::ToshiCreate( engineParams );
+	TUtil::SetTPStringPool( new TPString8Pool( 1024, 0, Toshi::GetGlobalAllocator(), TNULL ) );
+
 	g_oTheApp.Create( "BYardLauncher", argc, argv );
 	g_oTheApp.Execute();
 
@@ -66,6 +73,47 @@ TBOOL Application::OnEvent( const SDL_Event& event )
 
 	return TTRUE;
 }
+
+static class LauncherUpdateThread : public TThread
+{
+public:
+	virtual void Main() OVERRIDE
+	{
+		UpdateManager::ClearTempFiles();
+
+		TINFO( "Checking for launcher (v%d.%d) updates...\n", BYLAUNCHER_VERSION_MAJOR, BYLAUNCHER_VERSION_MINOR );
+
+		GlobalStateAccessor globalState;
+
+		globalState.SetFlags( GlobalState::kFlag_CheckingUpdates, TTRUE );
+		UpdateManager::VersionInfo oVersionInfo;
+		TBOOL bOutdated = UpdateManager::CheckVersion( BYLAUNCHER_UPDATE_URL, TVERSION( BYLAUNCHER_VERSION_MAJOR, BYLAUNCHER_VERSION_MINOR ), &oVersionInfo );
+		globalState.SetFlags( GlobalState::kFlag_CheckingUpdates, TFALSE );
+
+		if ( !bOutdated )
+		{
+			TINFO("The launcher is up-to-date!\n");
+			return;
+		}
+		
+		globalState.SetFlags( GlobalState::kFlag_Updating, TTRUE );
+		TINFO( "Found new update for the launcher! (v%u.%u: %s)\n", oVersionInfo.uiVersion.Parts.Major, oVersionInfo.uiVersion.Parts.Minor, oVersionInfo.strUpdateUrl );
+		TBOOL bUpdated = UpdateManager::DownloadAndInstallUpdate( oVersionInfo.strUpdateUrl.GetString() );
+		globalState.SetFlags( GlobalState::kFlag_Updating, TFALSE );
+		
+		if ( bUpdated )
+		{
+			globalState.SetFlags( GlobalState::kFlag_Updated, TTRUE );
+			TINFO( "Launcher update succeeded!\n" );
+		}
+		else
+		{
+			globalState.SetFlags( GlobalState::kFlag_UpdateFailed, TTRUE );
+			TERROR( "An error has occured while updating launcher...\n" );
+		}
+	}
+}
+s_oUpdateThread;
 
 TBOOL Application::OnCreate( TINT argc, TCHAR** argv )
 {
@@ -89,7 +137,7 @@ TBOOL Application::OnCreate( TINT argc, TCHAR** argv )
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-	io.Fonts->AddFontFromFileTTF( "C:\\Windows\\Fonts\\segoeui.ttf", 20.0f, TNULL, io.Fonts->GetGlyphRangesDefault() );
+	UIFonts::Create();
 
 	// Setup Dear ImGui style
 	ImGui::StyleColorsDark();
@@ -182,9 +230,12 @@ TBOOL Application::OnCreate( TINT argc, TCHAR** argv )
 	// Do other preparation things...
 	LoadResources();
 
+	UpdateManager::Initialise();
+	s_oUpdateThread.Create( 1024 * 32, TThread::THREAD_PRIORITY_IDLE, 0 );
+
 	ModManager::Initialise();
 	ModManager::ScanForMods();
-	ModManager::CheckForUpdates();
+	//ModManager::CheckForUpdates();
 
 	g_oSettings.Load();
 
@@ -196,7 +247,7 @@ void Application::LoadResources()
 	// Load background image
 	{
 		int    width, height, numComponents;
-		TBYTE* pImageData = stbi_load( "Launcher\\Assets\\background.png", &width, &height, &numComponents, 4 );
+		TBYTE* pImageData = stbi_load( "Resources\\Images\\launcher-background.png", &width, &height, &numComponents, 4 );
 
 		m_BackgroundTexture.Create( TEXTURE_FORMAT_R8G8B8A8_UNORM, width, height, pImageData );
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
@@ -217,9 +268,7 @@ TBOOL Application::OnUpdate( TFLOAT flDeltaTime )
 	if ( !m_bCreatedMainScreen )
 	// Load the main screen
 	{
-		MainScreen* pMainScreen = new MainScreen();
-		pMainScreen->EnableGameButtons( m_bHasGame );
-		g_oUIControl.ShowScreen( pMainScreen );
+		g_oUIControl.ShowScreen( new MainScreen() );
 		m_bCreatedMainScreen = TTRUE;
 	}
 	else
@@ -240,7 +289,7 @@ TBOOL Application::OnUpdate( TFLOAT flDeltaTime )
 
 	ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDocking;
 	window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
-	window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+	window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
 	ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( UI_MAIN_PADDING, UI_MAIN_PADDING ) );
 	ImGui::PushStyleVar( ImGuiStyleVar_WindowBorderSize, 0.0f );
@@ -254,32 +303,24 @@ TBOOL Application::OnUpdate( TFLOAT flDeltaTime )
 		ImGuiID dockspaceId = ImGui::GetID( "MainDockspace" );
 		ImGui::DockSpace( dockspaceId, ImVec2( 0, 0 ), ImGuiDockNodeFlags_NoTabBar );
 
-		/*if ( ImGui::BeginMainMenuBar() )
-		{
-			if ( ImGui::BeginMenu( "Visit GitHub" ) )
-			{
-				if ( ImGui::MenuItem( "OpenBarnyard Repository" ) )
-					Platform_OpenInShell( "https://github.com/InfiniteC0re/OpenBarnyard" );
+		GlobalStateAccessor globalState;
+		TUINT32 uiGlobalStateFlags = globalState.GetFlags();
 
-				if ( ImGui::MenuItem( "Launcher Repository" ) )
-					Platform_OpenInShell( "https://github.com/InfiniteC0re/BarnyardLauncher" );
-
-				ImGui::EndMenu();
-			}
-
-			if ( ImGui::BeginMenu( "Discord" ) )
-			{
-				if ( ImGui::MenuItem( "OpenTOSHI" ) )
-					Platform_OpenInShell( "https://discord.gg/ZYngJwhrsn" );
-
-				if ( ImGui::MenuItem( "Barnyard Speedrunning" ) )
-					Platform_OpenInShell( "https://discord.gg/BrVpSPfgT8" );
-
-				ImGui::EndMenu();
-			}
-
-			ImGui::EndMainMenuBar();
-		}*/
+		ImGui::SetCursorPosY( 600.0f - UI_MAIN_PADDING + 3.8f );
+		ImGui::PushFont( UIFonts::Main18 );
+		ImGui::PushStyleColor( ImGuiCol_Text, ImVec4( 1.0f, 1.0f, 1.0f, 0.25f ) );
+		if ( uiGlobalStateFlags & GlobalState::kFlag_Updating )
+			ImGui::Text( "Updating launcher..." );
+		else if ( uiGlobalStateFlags & GlobalState::kFlag_CheckingUpdates )
+			ImGui::Text( "Checking for launcher updates..." );
+		else if ( uiGlobalStateFlags & GlobalState::kFlag_UpdateFailed )
+			ImGui::Text( "An error has occured while updating launcher!" );
+		else if ( uiGlobalStateFlags & GlobalState::kFlag_Updated )
+			ImGui::Text( "Launcher has been updated, waiting for restart!" );
+		else
+			ImGui::Text( "Launcher is up-to-date" );
+		ImGui::PopStyleColor(); // ImGuiCol_Text
+		ImGui::PopFont();
 
 		ImGui::SetNextWindowDockID( dockspaceId );
 		ImGui::Begin( "Main Window", TNULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove );

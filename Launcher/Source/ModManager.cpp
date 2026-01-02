@@ -1,19 +1,11 @@
 #include "pch.h"
 #include "ModManager.h"
+#include "UpdateManager.h"
 
 // We don't need any other header files of the ModCore to be in the list of includes
 #include <../../OpenBarnyard/SDK/BYModCore/Include/ModLoader.h>
 
 #include <ToshiTools/json.hpp>
-
-#include <curl/curl.h>
-#include <mz.h>
-#include <mz_zip.h>
-#include <mz_strm.h>
-#include <mz_strm_os.h>
-#include <mz_zip_rw.h>
-
-#include <filesystem>
 
 //-----------------------------------------------------------------------------
 // Enables memory debugging.
@@ -23,54 +15,15 @@
 
 TOSHI_NAMESPACE_USING
 
-static CURL*                            s_pCurl;
 static T2DynamicVector<ModManager::Mod> s_vecMods;
-
-static size_t CURLWriteCallback( void* contents, size_t size, size_t nmemb, void* userp )
-{
-	( (std::string*)userp )->append( (char*)contents, size * nmemb );
-	return size * nmemb;
-}
 
 void ModManager::Initialise()
 {
-	curl_global_init( CURL_GLOBAL_DEFAULT );
-
-	s_pCurl = curl_easy_init();
-
-	if ( !s_pCurl )
-	{
-		TERROR( "curl_easy_init() returned null pointer\n" );
-		return;
-	}
-
-	curl_easy_setopt( s_pCurl, CURLOPT_SSL_VERIFYPEER, 0L );
-	curl_easy_setopt( s_pCurl, CURLOPT_SSL_VERIFYHOST, 0L );
-	curl_easy_setopt( s_pCurl, CURLOPT_CA_CACHE_TIMEOUT, 604800L );
-	curl_easy_setopt( s_pCurl, CURLOPT_WRITEFUNCTION, CURLWriteCallback );
-	curl_easy_setopt( s_pCurl, CURLOPT_FOLLOWLOCATION, TRUE );
+	
 }
 
 void ModManager::ScanForMods()
 {
-	//{
-	//	void* pZIP = mz_zip_reader_create();
-
-	//	TINT32 iZipOpenRes = mz_zip_reader_open_file_in_memory( pZIP, "C:\\Users\\InfiniteC0re\\Downloads\\Toshi Binaries.zip" );
-
-	//	if ( iZipOpenRes != MZ_OK )
-	//	{
-	//		TERROR( "Unable to open ZIP file (Result: %d)\n", iZipOpenRes );
-	//		return;
-	//	}
-
-	//	TINT32 iSaveRes = mz_zip_reader_save_all( pZIP, ".\\Test" );
-	//	//mz_zip_reader_unzip_cd()
-
-	//	mz_zip_reader_close( pZIP );
-	//	mz_zip_delete( &pZIP );
-	//}
-
 	for ( const auto& entry : std::filesystem::directory_iterator( "Mods\\" ) )
 	{
 		if ( entry.path().extension().compare( L".dll" ) == 0 )
@@ -174,58 +127,6 @@ void ModManager::ScanForMods()
 	}
 }
 
-struct VersionInfo
-{
-	Toshi::TVersion uiVersion;
-	Toshi::TString8 strUpdateUrl;
-};
-
-static TBOOL CheckVersion( Toshi::T2StringView strUpdateInfoUrl, Toshi::TVersion uiCurrentVersion, VersionInfo* pOutVersionInfo )
-{
-	std::string responseBuffer;
-	curl_easy_setopt( s_pCurl, CURLOPT_WRITEDATA, &responseBuffer );
-	curl_easy_setopt( s_pCurl, CURLOPT_URL, strUpdateInfoUrl.Get() );
-
-	// Do the request
-	CURLcode res = curl_easy_perform( s_pCurl );
-	if ( res != CURLE_OK ) return TFALSE;
-
-	// Parse json
-	nlohmann::json json;
-	try
-	{
-		json = json.parse( responseBuffer );
-	}
-	catch (...)
-	{
-		TERROR( "Error parsing JSON response from URL: %s\n", strUpdateInfoUrl.Get() );
-		return TFALSE;
-	}
-
-	if ( json.is_null() || !json.is_object() )
-		return TFALSE;
-
-	auto version = json.find( "version" );
-	auto latest  = json.find( "latest" );
-
-	if ( version == json.end() || latest == json.end() ) return TFALSE;
-	if ( !version->is_array() || !latest->is_string() ) return TFALSE;
-
-	if ( version->size() != 2 || !version->at( 0 ).is_number_integer() || !version->at( 1 ).is_number_integer() )
-		return TFALSE;
-
-	TVersion latestVersion = TVERSION( version->at( 0 ).get<TINT>(), version->at( 1 ).get<TINT>() );
-
-	if ( pOutVersionInfo )
-	{
-		pOutVersionInfo->uiVersion    = latestVersion;
-		pOutVersionInfo->strUpdateUrl = latest->get<std::string>().c_str();
-	}
-
-	return ( uiCurrentVersion.Parts.Major < latestVersion.Parts.Major || uiCurrentVersion.Parts.Minor < latestVersion.Parts.Minor );
-}
-
-
 void ModManager::CheckForUpdates()
 {
 	TINFO( "Ckecking for updates...\n" );
@@ -235,8 +136,8 @@ void ModManager::CheckForUpdates()
 		if ( !it->bAutoUpdates )
 			continue;
 		
-		VersionInfo versionInfo;
-		CheckVersion( it->strAutoUpdateURL.GetString(), it->uiVersion, &versionInfo );
+		UpdateManager::VersionInfo versionInfo;
+		UpdateManager::CheckVersion( it->strAutoUpdateURL.GetString(), it->uiVersion, &versionInfo );
 	}
 }
 

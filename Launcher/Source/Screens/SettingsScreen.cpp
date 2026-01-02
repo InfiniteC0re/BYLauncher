@@ -5,6 +5,7 @@
 #include "UIScreenControl.h"
 #include "Application.h"
 #include "Hash.h"
+#include "UIFonts.h"
 
 #include <Toshi/T2Map.h>
 #include <SDL/SDL.h>
@@ -35,6 +36,9 @@ SettingsScreen::SettingsScreen()
 		{
 			TINFO( "Found new screen resolution (%dx%d)\n", displayMode.w, displayMode.h );
 
+			if ( displayMode.w == g_oSettings.iWidth && displayMode.h == g_oSettings.iHeight )
+				m_iSelectedResolution = m_vecResolutions.Size();
+
 			m_vecResolutions.PushBack( std::move( TString8::VarArgs( "%dx%d", displayMode.w, displayMode.h ) ) );
 			mapResolutions.Insert( uiHash, TTRUE );
 		}
@@ -56,6 +60,12 @@ void SettingsScreen::Render()
 	style.Alpha       = GetAnimProgress();
 
 	ImGui::SetCursorPos( ImVec2( 0, 100 ) );
+
+	ImGui::PushFont( UIFonts::Main28 );
+	ImGui::Text( "Settings" );
+	ImGui::PopFont();
+
+	ImGui::Text( "Game" );
 
 	if ( ImGui::BeginCombo( "Resolution", m_vecResolutions[ m_iSelectedResolution ] ) )
 	{
@@ -87,21 +97,27 @@ void SettingsScreen::Render()
 		ImGui::EndCombo();
 	}
 
+	ImGui::SetCursorPosY( ImGui::GetCursorPosY() - 3.0f );
+	ImGui::PushFont( UIFonts::Main18 );
+	ImGui::PushStyleColor( ImGuiCol_Text, ImVec4( 1.0f, 1.0f, 1.0f, 0.5f ) );
+	ImGui::Text( "Notice that some high screen resolutions are not supported!" );
+	ImGui::PopStyleColor(); // ImGuiCol_Text
+	ImGui::PopFont();
+
 	ImGui::Checkbox( "Windowed Mode", &g_oSettings.bWindowed );
-	ImGui::Separator();
+	ImGui::Checkbox( "Controller Support", &g_oSettings.bEnableController );
+//	ImGui::Separator();
 
-	ImGui::Text( "Modloader" );
-	ImGui::Checkbox( "Experimental Mode", &g_oSettings.bExperimental );
-	ImGui::Checkbox( "Fun%", &g_oSettings.bFun );
-
-	ImGui::PushStyleVar( ImGuiStyleVar_FramePadding, ImVec2( 28.0f, 8.0f ) );
-	ImGui::SetCursorPos( ImVec2( 0, region.y - ( flFontSize + style.FramePadding.y * 2 ) ) );
+// 	ImGui::Text( "Modloader" );
+// 	ImGui::Checkbox( "Experimental Mode", &g_oSettings.bExperimental );
+// 	ImGui::Checkbox( "Fun%", &g_oSettings.bFun );
+ 
+ 	ImGui::PushStyleVar( ImGuiStyleVar_FramePadding, ImVec2( 28.0f, 8.0f ) );
+ 	ImGui::SetCursorPos( ImVec2( 0, region.y - ( flFontSize + style.FramePadding.y * 2 ) ) );
 
 	if ( ImGui::Button( "BACK" ) )
 	{
-		MainScreen* pMainScreen = new MainScreen();
-		pMainScreen->EnableGameButtons( TTRUE );
-		g_oUIControl.ShowScreen( pMainScreen );
+		g_oUIControl.ShowScreen( new MainScreen() );
 
 		g_oSettings.Save();
 	}

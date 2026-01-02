@@ -24,6 +24,8 @@ public:
 
 	void LoadResources();
 
+	TBOOL HasGame() const { return m_bHasGame; }
+
 private:
 	Toshi::T2Render::WindowParams m_oWindowParams;
 

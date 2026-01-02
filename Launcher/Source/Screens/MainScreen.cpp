@@ -2,6 +2,7 @@
 #include "MainScreen.h"
 #include "ModsScreen.h"
 #include "SettingsScreen.h"
+#include "ContactsScreen.h"
 #include "Application.h"
 #include "UIScreenControl.h"
 #include "GameSettings.h"
@@ -19,6 +20,7 @@ TOSHI_NAMESPACE_USING
 
 MainScreen::MainScreen()
 {
+	EnableGameButtons( g_oTheApp.HasGame() );
 }
 
 MainScreen::~MainScreen()
@@ -31,7 +33,7 @@ void MainScreen::Render()
 
 	ImGuiStyle& style = ImGui::GetStyle();
 
-	//ImGui::BeginDisabled( !m_bEnableGameButtons );
+	ImGui::BeginDisabled( !m_bEnableGameButtons );
 	{
 		// Draw Control buttons
 		ImGui::PushStyleVar( ImGuiStyleVar_FramePadding, ImVec2( 28.0f, 8.0f ) );
@@ -59,17 +61,15 @@ void MainScreen::Render()
 			Button_Settings();
 
 		ImGui::SameLine();
-		
 		if ( ImGui::Button( "MANAGE MODS" ) )
 			Button_Mods();
 
 		ImGui::SameLine();
-		if ( ImGui::Button( "TOGGLE STATE" ) )
-			m_bEnableGameButtons = !m_bEnableGameButtons;
+		if ( ImGui::Button( "CONTACTS" ) )
+			Button_Contacts();
 		
 		ImGui::PopStyleVar(); // ImGuiStyleVar_FramePadding
-		//ImGui::EndDisabled();
-
+		ImGui::EndDisabled();
 	}
 }
 
@@ -109,12 +109,14 @@ void MainScreen::Button_PlayGame()
 		}
 
 		// Other parameters
-		if ( g_oSettings.bExperimental )
+		/*if ( g_oSettings.bExperimental )
 			strStartParams.Append( L"-experimental " );
 
 		if ( g_oSettings.bFun )
-			strStartParams.Append( L"-fun " );
+			strStartParams.Append( L"-fun " );*/
 	}
+
+	TINFO( "Starting the game with '%s' parameters\n", strStartParams.Get() );
 
 	Process gameProcess;
 	gameProcess.Create(
@@ -134,4 +136,9 @@ void MainScreen::Button_Settings()
 void MainScreen::Button_Mods()
 {
 	g_oUIControl.ShowScreen( new ModsScreen() );
+}
+
+void MainScreen::Button_Contacts()
+{
+	g_oUIControl.ShowScreen( new ContactsScreen() );
 }

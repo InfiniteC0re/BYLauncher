@@ -25,7 +25,8 @@ GameSettings::~GameSettings()
 
 void GameSettings::Save()
 {
-	std::ofstream fileStream( "Launcher\\BYLauncher.vdf" );
+	// First of all save settings to the VDF file
+	std::ofstream fileStream( "BYLauncher.vdf" );
 
 	vdf::object settings;
 	settings.set_name( "BYardLauncher" );
@@ -38,12 +39,67 @@ void GameSettings::Save()
 
 	vdf::write( fileStream, settings );
 
-	TINFO( "Saved core settings file\n" );
+	// Now, save settings to the regedit, so the original game can access them too
+	HKEY hKey;
+	if ( ERROR_SUCCESS == RegOpenKeyExA( HKEY_CURRENT_USER, "Software\\THQ\\Barnyard", 0, KEY_WRITE, &hKey ) )
+	{
+		DWORD dwWindowed = bWindowed ? 1 : 0;
+		DWORD dwEnableController = bEnableController ? 1 : 0;
+
+		HRESULT hRes;
+		hRes = RegSetValueExA( hKey, "RealForcedWindowed", NULL, REG_DWORD, (LPBYTE)&dwWindowed, sizeof( dwWindowed ) );
+		hRes = RegSetValueExA( hKey, "Width", NULL, REG_DWORD, (LPBYTE)&iWidth, sizeof( iWidth ) );
+		hRes = RegSetValueExA( hKey, "Height", NULL, REG_DWORD, (LPBYTE)&iHeight, sizeof( iHeight ) );
+		hRes = RegSetValueExA( hKey, "ControllerEnabled", NULL, REG_DWORD, (LPBYTE)&dwEnableController, sizeof( dwEnableController ) );
+		
+		RegCloseKey( hKey );
+	}
+
+	TINFO( "Saved core settings!\n" );
 }
 
 void GameSettings::Load()
 {
-	std::ifstream fileStream( "Launcher\\BYLauncher.vdf" );
+	// First of all read settings of the original game from the regedit
+	HKEY hKey;
+	if ( ERROR_SUCCESS == RegOpenKeyExA( HKEY_CURRENT_USER, "Software\\THQ\\Barnyard", 0, KEY_READ, &hKey ) )
+	{
+		DWORD dwType = REG_NONE;
+		DWORD dwData = 0;
+		DWORD dwSize = sizeof( dwData );
+
+		if ( ERROR_SUCCESS == RegQueryValueExA( hKey, "RealForcedWindowed", NULL, &dwType, (LPBYTE)&dwData, &dwSize ) &&
+			 dwType == REG_DWORD )
+		{
+			bWindowed = dwData != FALSE;
+		}
+
+		dwSize = sizeof( iWidth );
+		if ( ERROR_SUCCESS == RegQueryValueExA( hKey, "Width", NULL, &dwType, (LPBYTE)&dwData, &dwSize ) &&
+			 dwType == REG_DWORD )
+		{
+			iWidth = dwData;
+		}
+
+		dwSize = sizeof( iHeight );
+		if ( ERROR_SUCCESS == RegQueryValueExA( hKey, "Height", NULL, &dwType, (LPBYTE)&dwData, &dwSize ) &&
+			 dwType == REG_DWORD )
+		{
+			iHeight = dwData;
+		}
+
+		dwSize = sizeof( dwData );
+		if ( ERROR_SUCCESS == RegQueryValueExA( hKey, "ControllerEnabled", NULL, &dwType, (LPBYTE)&dwData, &dwSize ) &&
+			 dwType == REG_DWORD )
+		{
+			bEnableController = dwData != FALSE;
+		}
+
+		RegCloseKey( hKey );
+	}
+
+	// Read from the VDF file
+	std::ifstream fileStream( "BYLauncher.vdf" );
 
 	if ( !fileStream.is_open() )
 		return;
@@ -57,8 +113,8 @@ void GameSettings::Load()
 	bFun          = vdf::getBool( settings, "fun", TFALSE );
 	bDXVK         = vdf::getBool( settings, "dxvk", TTRUE );
 	bWindowed     = vdf::getBool( settings, "windowed", TFALSE );
-	iWidth        = vdf::getInt( settings, "width", 0 );
-	iHeight       = vdf::getInt( settings, "height", 0 );
+	iWidth        = vdf::getInt( settings, "width", 800 );
+	iHeight       = vdf::getInt( settings, "height", 600 );
 
 	Apply();
 }

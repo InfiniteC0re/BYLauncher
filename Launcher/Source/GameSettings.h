@@ -2,12 +2,13 @@
 
 struct GameSettingsProperties
 {
-	TBOOL bExperimental = TFALSE;
-	TBOOL bFun          = TFALSE;
-	TBOOL bWindowed     = TFALSE;
-	TBOOL bDXVK         = TTRUE;
-	TINT  iWidth        = 0;
-	TINT  iHeight       = 0;
+	TBOOL bExperimental     = TFALSE;
+	TBOOL bFun              = TFALSE;
+	TBOOL bWindowed         = TFALSE;
+	TBOOL bEnableController = TFALSE;
+	TBOOL bDXVK             = TTRUE;
+	TINT  iWidth            = 800;
+	TINT  iHeight           = 600;
 };
 
 inline struct GameSettings

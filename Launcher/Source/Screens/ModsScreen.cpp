@@ -3,6 +3,7 @@
 #include "ModManager.h"
 #include "MainScreen.h"
 #include "UIScreenControl.h"
+#include "UIFonts.h"
 
 #include <imgui.h>
 
@@ -33,6 +34,10 @@ void ModsScreen::Render()
 	style.Alpha       = GetAnimProgress();
 
 	ImGui::SetCursorPos( ImVec2( 0, 100 ) );
+
+	ImGui::PushFont( UIFonts::Main28 );
+	ImGui::Text( "Mod Manager" );
+	ImGui::PopFont();
 
 	ImGui::Text( "List of all mods" );
 	if ( ImGui::BeginTable( "Mods", 3 ) )
@@ -66,9 +71,7 @@ void ModsScreen::Render()
 
 	if ( ImGui::Button( "BACK" ) )
 	{
-		MainScreen* pMainScreen = new MainScreen();
-		pMainScreen->EnableGameButtons( TTRUE );
-		g_oUIControl.ShowScreen( pMainScreen );
+		g_oUIControl.ShowScreen( new MainScreen() );
 	}
 	ImGui::PopStyleVar();
 }
